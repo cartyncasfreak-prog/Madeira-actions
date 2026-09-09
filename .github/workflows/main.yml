@@ -203,7 +203,10 @@ jobs:
           if [ -z "$CRT0" ]; then
             echo "libwinecrt0.a not built by the -k pass; building it explicitly"
             export PATH="$GITHUB_WORKSPACE/toolchains/$MINGW/bin:$PATH"
-            make -j"$(sysctl -n hw.ncpu)" dlls/winecrt0/aarch64-windows/libwinecrt0.a || true
+            
+            # BUILD FIX: Target the directory or build inside dlls/winecrt0
+            make -j"$(sysctl -n hw.ncpu)" dlls/winecrt0 || true
+            
             CRT0="$(find . -name 'libwinecrt0.a' -print -quit)"
           fi
           test -n "$CRT0" || { echo "FATAL: no libwinecrt0.a — DXMT cannot link"; \
@@ -221,6 +224,7 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           ln -sfn build-macos wine/build-arm64ec
           echo "build-arm64ec -> $(readlink wine/build-arm64ec)"
+
 
       # ==============================================================
       # NATIVE LIBS — GnuTLS must precede ntdll-unix: bcrypt, secur32
