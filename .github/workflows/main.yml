@@ -189,15 +189,28 @@ jobs:
         run: |
           set -uxo pipefail
           export PATH="$PWD/toolchains/$MINGW/bin:$PATH"
+          
+          # Explicitly set Xcode Apple SDK CC & CFLAGS for host builds
+          SDKPATH="$(xcrun --sdk macosx --show-sdk-path)"
+          export CC="clang -isysroot $SDKPATH"
+          export CXX="clang++ -isysroot $SDKPATH"
+          
           cd wine
           mkdir -p build-macos && cd build-macos
-          
-          # Run configure and dump config.log if it fails
-          if ! ../configure --enable-win64 --disable-tests --without-x --without-freetype; then
-            echo "=================== CONFIG.LOG ERRORS ==================="
-            cat config.log | tail -n 120
-            exit 1
-          fi
+
+          # Specify --host to tell autotools we are cross-compiling/targeting host explicitly without running tests
+          ../configure \
+            --host=aarch64-apple-darwin \
+            --enable-win64 \
+            --disable-tests \
+            --without-x \
+            --without-freetype \
+            CROSSCC="aarch64-w64-mingw32-clang" \
+            aarch64_CC="aarch64-w64-mingw32-clang" || {
+              echo "=================== CONFIG.LOG ERRORS ==================="
+              grep -i -C 5 "error:" config.log || tail -n 120 config.log
+              exit 1
+            }
 
           test -f include/config.h
           make -k -j"$(sysctl -n hw.ncpu)" 2>&1 | tail -40 || true
