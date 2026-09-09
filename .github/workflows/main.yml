@@ -7,12 +7,11 @@ permissions:
   contents: read
 
 env:
-  IPHONEOS_DEPLOYMENT_TARGET: "16.0"
   DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
   IOS_DEPLOYMENT_TARGET: "16.0"
   MINGW: llvm-mingw-20260421-ucrt-macos-universal
   # bump to invalidate every cache at once
-  CACHE_V: "3"
+  CACHE_V: "1"
 
 jobs:
   build:
@@ -188,11 +187,12 @@ jobs:
         run: |
           set -euxo pipefail
           export PATH="$PWD/toolchains/$MINGW/bin:$PATH"
-          unset IPHONEOS_DEPLOYMENT_TARGET
           cd wine
           mkdir -p build-macos && cd build-macos
           ../configure --enable-win64 --disable-tests --without-x --without-freetype
-
+          test -f include/config.h
+          make -k -j"$(sysctl -n hw.ncpu)" 2>&1 | tail -40 || true
+          echo "=== host-side link failures are expected; PE side is what matters ==="
 
       - name: Verify Wine outputs + wire up build-arm64ec
         run: |
@@ -203,10 +203,7 @@ jobs:
           if [ -z "$CRT0" ]; then
             echo "libwinecrt0.a not built by the -k pass; building it explicitly"
             export PATH="$GITHUB_WORKSPACE/toolchains/$MINGW/bin:$PATH"
-            
-            # BUILD FIX: Target the directory or build inside dlls/winecrt0
-            make -j"$(sysctl -n hw.ncpu)" dlls/winecrt0 || true
-            
+            make -j"$(sysctl -n hw.ncpu)" dlls/winecrt0/aarch64-windows/libwinecrt0.a || true
             CRT0="$(find . -name 'libwinecrt0.a' -print -quit)"
           fi
           test -n "$CRT0" || { echo "FATAL: no libwinecrt0.a — DXMT cannot link"; \
@@ -224,7 +221,6 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           ln -sfn build-macos wine/build-arm64ec
           echo "build-arm64ec -> $(readlink wine/build-arm64ec)"
-
 
       # ==============================================================
       # NATIVE LIBS — GnuTLS must precede ntdll-unix: bcrypt, secur32
@@ -307,7 +303,7 @@ jobs:
 
           if [ ! -f "$OBJ/libwineserver.a" ]; then
             FLAGS=(
-              -arch arm64 -isysroot "$SDK" -miphoneos-version-min="$IOS_DEPLOYMENT_TARGET" -O2
+              -arch arm64 -isysroot "$SDK" -miphoneos-version-min=16.0 -O2
               -I"$WINE_SRC/include" -I"$WINE_SRC/include/wine"
               -I"$WINE_SRC/build-macos/include"
               -I"$BUILD_DIR" -I"$WINE_SRC/server"
@@ -414,8 +410,8 @@ jobs:
             -DCMAKE_MACOSX_BUNDLE=OFF \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
-          -DCMAKE_C_FLAGS="-DFEX_IOS_HOST=1 -D_LIBCPP_AVAILABILITY_HAS_NO_VERBOSE_ABORT" \
-          -DCMAKE_CXX_FLAGS="-DFEX_IOS_HOST=1 -D_LIBCPP_AVAILABILITY_HAS_NO_VERBOSE_ABORT" \
+            -DCMAKE_C_FLAGS="-DFEX_IOS_HOST=1" \
+            -DCMAKE_CXX_FLAGS="-DFEX_IOS_HOST=1" \
             -DBUILD_TESTING=OFF \
             -DBUILD_TESTS=False \
             -DBUILD_THUNKS=OFF \
@@ -475,8 +471,7 @@ jobs:
           sed -i '' 's/MATCHES "Darwin"/MATCHES "Darwin|iOS"/' \
             toolchains/llvm-project/llvm/cmake/modules/AddLLVM.cmake
           cmake -S toolchains/llvm-project/llvm -B toolchains/llvm-host -G Ninja \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_CXX_FLAGS="-D_LIBCPP_AVAILABILITY_HAS_NO_VERBOSE_ABORT" \
+            -DCMAKE_BUILD_TYPE=Release \
             -DLLVM_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_EXAMPLES=OFF \
             -DLLVM_INCLUDE_BENCHMARKS=OFF
           cmake --build toolchains/llvm-host --target llvm-tblgen
@@ -484,8 +479,7 @@ jobs:
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_OSX_SYSROOT="$(xcrun --sdk iphoneos --show-sdk-path)" \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
-                      -DCMAKE_OSX_DEPLOYMENT_TARGET="$IOS_DEPLOYMENT_TARGET" \
-          -DCMAKE_SYSTEM_VERSION="$IOS_DEPLOYMENT_TARGET" \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET="$IOS_DEPLOYMENT_TARGET" \
             -DCMAKE_MACOSX_BUNDLE=OFF \
             -DCMAKE_BUILD_TYPE=Release \
             -DLLVM_TABLEGEN="$PWD/toolchains/llvm-host/bin/llvm-tblgen" \
@@ -647,10 +641,7 @@ jobs:
             -configuration Release \
             -sdk iphoneos \
             CONFIGURATION_BUILD_DIR="$PWD/out" \
-                      IPHONEOS_DEPLOYMENT_TARGET="$IOS_DEPLOYMENT_TARGET" \
-          OTHER_CFLAGS="-D_LIBCPP_AVAILABILITY_HAS_NO_VERBOSE_ABORT" \
-          OTHER_CPLUSPLUSFLAGS="-D_LIBCPP_AVAILABILITY_HAS_NO_VERBOSE_ABORT" \
-          ARCHS=arm64 ONLY_ACTIVE_ARCH=NO \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=NO \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
             build
 
