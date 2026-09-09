@@ -7,11 +7,12 @@ permissions:
   contents: read
 
 env:
+  IPHONEOS_DEPLOYMENT_TARGET: "16.0"
   DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
   IOS_DEPLOYMENT_TARGET: "16.0"
   MINGW: llvm-mingw-20260421-ucrt-macos-universal
   # bump to invalidate every cache at once
-  CACHE_V: "1"
+  CACHE_V: "3"
 
 jobs:
   build:
@@ -303,7 +304,7 @@ jobs:
 
           if [ ! -f "$OBJ/libwineserver.a" ]; then
             FLAGS=(
-              -arch arm64 -isysroot "$SDK" -miphoneos-version-min=16.0 -O2
+              -arch arm64 -isysroot "$SDK" -miphoneos-version-min="$IOS_DEPLOYMENT_TARGET" -O2
               -I"$WINE_SRC/include" -I"$WINE_SRC/include/wine"
               -I"$WINE_SRC/build-macos/include"
               -I"$BUILD_DIR" -I"$WINE_SRC/server"
@@ -410,8 +411,8 @@ jobs:
             -DCMAKE_MACOSX_BUNDLE=OFF \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
-            -DCMAKE_C_FLAGS="-DFEX_IOS_HOST=1" \
-            -DCMAKE_CXX_FLAGS="-DFEX_IOS_HOST=1" \
+          -DCMAKE_C_FLAGS="-DFEX_IOS_HOST=1 -D_LIBCPP_AVAILABILITY_HAS_NO_VERBOSE_ABORT" \
+          -DCMAKE_CXX_FLAGS="-DFEX_IOS_HOST=1 -D_LIBCPP_AVAILABILITY_HAS_NO_VERBOSE_ABORT" \
             -DBUILD_TESTING=OFF \
             -DBUILD_TESTS=False \
             -DBUILD_THUNKS=OFF \
@@ -471,7 +472,8 @@ jobs:
           sed -i '' 's/MATCHES "Darwin"/MATCHES "Darwin|iOS"/' \
             toolchains/llvm-project/llvm/cmake/modules/AddLLVM.cmake
           cmake -S toolchains/llvm-project/llvm -B toolchains/llvm-host -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_CXX_FLAGS="-D_LIBCPP_AVAILABILITY_HAS_NO_VERBOSE_ABORT" \
             -DLLVM_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_EXAMPLES=OFF \
             -DLLVM_INCLUDE_BENCHMARKS=OFF
           cmake --build toolchains/llvm-host --target llvm-tblgen
@@ -479,7 +481,8 @@ jobs:
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_OSX_SYSROOT="$(xcrun --sdk iphoneos --show-sdk-path)" \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET="$IOS_DEPLOYMENT_TARGET" \
+                      -DCMAKE_OSX_DEPLOYMENT_TARGET="$IOS_DEPLOYMENT_TARGET" \
+          -DCMAKE_SYSTEM_VERSION="$IOS_DEPLOYMENT_TARGET" \
             -DCMAKE_MACOSX_BUNDLE=OFF \
             -DCMAKE_BUILD_TYPE=Release \
             -DLLVM_TABLEGEN="$PWD/toolchains/llvm-host/bin/llvm-tblgen" \
@@ -641,7 +644,10 @@ jobs:
             -configuration Release \
             -sdk iphoneos \
             CONFIGURATION_BUILD_DIR="$PWD/out" \
-            ARCHS=arm64 ONLY_ACTIVE_ARCH=NO \
+                      IPHONEOS_DEPLOYMENT_TARGET="$IOS_DEPLOYMENT_TARGET" \
+          OTHER_CFLAGS="-D_LIBCPP_AVAILABILITY_HAS_NO_VERBOSE_ABORT" \
+          OTHER_CPLUSPLUSFLAGS="-D_LIBCPP_AVAILABILITY_HAS_NO_VERBOSE_ABORT" \
+          ARCHS=arm64 ONLY_ACTIVE_ARCH=NO \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
             build
 
