@@ -183,17 +183,26 @@ jobs:
       # author never builds that target. `make -k` keeps going and still
       # produces the two things actually consumed: the PE static libs
       # (winecrt0, for DXMT's meson) and the widl-generated headers.
+
       - name: Build Wine (PE libs + generated headers)
         if: steps.winecache.outputs.cache-hit != 'true'
         run: |
-          set -euxo pipefail
+          set -uxo pipefail
           export PATH="$PWD/toolchains/$MINGW/bin:$PATH"
           cd wine
           mkdir -p build-macos && cd build-macos
-          ../configure --enable-win64 --disable-tests --without-x --without-freetype
+          
+          # Run configure and dump config.log if it fails
+          if ! ../configure --enable-win64 --disable-tests --without-x --without-freetype; then
+            echo "=================== CONFIG.LOG ERRORS ==================="
+            cat config.log | tail -n 120
+            exit 1
+          fi
+
           test -f include/config.h
           make -k -j"$(sysctl -n hw.ncpu)" 2>&1 | tail -40 || true
           echo "=== host-side link failures are expected; PE side is what matters ==="
+
 
       - name: Verify Wine outputs + wire up build-arm64ec
         run: |
