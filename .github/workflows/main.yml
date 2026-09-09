@@ -9,7 +9,6 @@ permissions:
 env:
   DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
   IOS_DEPLOYMENT_TARGET: "16.0"
-  IPHONEOS_DEPLOYMENT_TARGET: "16.0"
   MINGW: llvm-mingw-20260421-ucrt-macos-universal
   # bump to invalidate every cache at once
   CACHE_V: "2"
@@ -183,39 +182,17 @@ jobs:
       # author never builds that target. `make -k` keeps going and still
       # produces the two things actually consumed: the PE static libs
       # (winecrt0, for DXMT's meson) and the widl-generated headers.
-
       - name: Build Wine (PE libs + generated headers)
         if: steps.winecache.outputs.cache-hit != 'true'
         run: |
-          set -uxo pipefail
+          set -euxo pipefail
           export PATH="$PWD/toolchains/$MINGW/bin:$PATH"
-          
-          # Explicitly set Xcode Apple SDK CC & CFLAGS for host builds
-          SDKPATH="$(xcrun --sdk macosx --show-sdk-path)"
-          export CC="clang -isysroot $SDKPATH"
-          export CXX="clang++ -isysroot $SDKPATH"
-          
           cd wine
           mkdir -p build-macos && cd build-macos
-
-          # Specify --host to tell autotools we are cross-compiling/targeting host explicitly without running tests
-          ../configure \
-            --host=aarch64-apple-darwin \
-            --enable-win64 \
-            --disable-tests \
-            --without-x \
-            --without-freetype \
-            CROSSCC="aarch64-w64-mingw32-clang" \
-            aarch64_CC="aarch64-w64-mingw32-clang" || {
-              echo "=================== CONFIG.LOG ERRORS ==================="
-              grep -i -C 5 "error:" config.log || tail -n 120 config.log
-              exit 1
-            }
-
+          ../configure --enable-win64 --disable-tests --without-x --without-freetype
           test -f include/config.h
           make -k -j"$(sysctl -n hw.ncpu)" 2>&1 | tail -40 || true
           echo "=== host-side link failures are expected; PE side is what matters ==="
-
 
       - name: Verify Wine outputs + wire up build-arm64ec
         run: |
@@ -326,7 +303,8 @@ jobs:
 
           if [ ! -f "$OBJ/libwineserver.a" ]; then
             FLAGS=(
-              -arch arm64 -isysroot "$SDK" -miphoneos-version-min="$IOS_DEPLOYMENT_TARGET" -O2
+              -arch arm64 -isysroot "$SDK" -miphoneos-version-min=16.0 -O2
+              -D_LIBCPP_ENABLE_ASSERTIONS=0
               -I"$WINE_SRC/include" -I"$WINE_SRC/include/wine"
               -I"$WINE_SRC/build-macos/include"
               -I"$BUILD_DIR" -I"$WINE_SRC/server"
@@ -433,8 +411,8 @@ jobs:
             -DCMAKE_MACOSX_BUNDLE=OFF \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
-            -DCMAKE_C_FLAGS="-DFEX_IOS_HOST=1" \
-            -DCMAKE_CXX_FLAGS="-DFEX_IOS_HOST=1 -D_LIBCPP_AVAILABILITY_HAS_NO_VERBOSE_ABORT" \
+            -DCMAKE_C_FLAGS="-DFEX_IOS_HOST=1 -miphoneos-version-min=16.0" \
+            -DCMAKE_CXX_FLAGS="-DFEX_IOS_HOST=1 -miphoneos-version-min=16.0" \
             -DBUILD_TESTING=OFF \
             -DBUILD_TESTS=False \
             -DBUILD_THUNKS=OFF \
@@ -493,17 +471,12 @@ jobs:
             https://github.com/llvm/llvm-project toolchains/llvm-project
           sed -i '' 's/MATCHES "Darwin"/MATCHES "Darwin|iOS"/' \
             toolchains/llvm-project/llvm/cmake/modules/AddLLVM.cmake
-          cmake -S toolchains/llvm-project/llvm -B toolchains/llvm-host -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DLLVM_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_EXAMPLES=OFF \
-            -DLLVM_INCLUDE_BENCHMARKS=OFF
-          cmake --build toolchains/llvm-host --target llvm-tblgen
           cmake -S toolchains/llvm-project/llvm -B toolchains/llvm-ios-build -G Ninja \
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_OSX_SYSROOT="$(xcrun --sdk iphoneos --show-sdk-path)" \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DCMAKE_OSX_DEPLOYMENT_TARGET="$IOS_DEPLOYMENT_TARGET" \
-            -DCMAKE_CXX_FLAGS="-D_LIBCPP_AVAILABILITY_HAS_NO_VERBOSE_ABORT" \
+            -DCMAKE_CXX_FLAGS="-miphoneos-version-min=16.0 -D_LIBCPP_ENABLE_ASSERTIONS=0" \
             -DCMAKE_MACOSX_BUNDLE=OFF \
             -DCMAKE_BUILD_TYPE=Release \
             -DLLVM_TABLEGEN="$PWD/toolchains/llvm-host/bin/llvm-tblgen" \
@@ -664,11 +637,12 @@ jobs:
             -target Madeira \
             -configuration Release \
             -sdk iphoneos \
+            IPHONEOS_DEPLOYMENT_TARGET=16.0 \
             CONFIGURATION_BUILD_DIR="$PWD/out" \
             ARCHS=arm64 ONLY_ACTIVE_ARCH=NO \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
-            IPHONEOS_DEPLOYMENT_TARGET=16.0 \
             build
+
 
       - name: Package IPA
         run: |
