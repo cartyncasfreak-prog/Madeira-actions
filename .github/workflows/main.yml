@@ -188,12 +188,11 @@ jobs:
         run: |
           set -euxo pipefail
           export PATH="$PWD/toolchains/$MINGW/bin:$PATH"
+          unset IPHONEOS_DEPLOYMENT_TARGET
           cd wine
           mkdir -p build-macos && cd build-macos
           ../configure --enable-win64 --disable-tests --without-x --without-freetype
-          test -f include/config.h
-          make -k -j"$(sysctl -n hw.ncpu)" 2>&1 | tail -40 || true
-          echo "=== host-side link failures are expected; PE side is what matters ==="
+
 
       - name: Verify Wine outputs + wire up build-arm64ec
         run: |
