@@ -8,7 +8,7 @@ permissions:
 
 env:
   DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
-  IOS_DEPLOYMENT_TARGET: "16.0"
+  IOS_DEPLOYMENT_TARGET: "17.0"
   MINGW: llvm-mingw-20260421-ucrt-macos-universal
   # bump to invalidate every cache at once
   CACHE_V: "1"
@@ -303,7 +303,7 @@ jobs:
 
           if [ ! -f "$OBJ/libwineserver.a" ]; then
             FLAGS=(
-              -arch arm64 -isysroot "$SDK" -miphoneos-version-min=16.0 -O2
+              -arch arm64 -isysroot "$SDK" -miphoneos-version-min=17.0 -O2
               -I"$WINE_SRC/include" -I"$WINE_SRC/include/wine"
               -I"$WINE_SRC/build-macos/include"
               -I"$BUILD_DIR" -I"$WINE_SRC/server"
